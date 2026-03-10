@@ -5,14 +5,13 @@
   "type": "module",
   "license": "MIT",
   "bin": {
-    "pilla": "./dist/cli.js"
+    "pilla": "dist/cli.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "bun build src/cli.ts --outfile dist/cli.js --target node --minify",
-    "bundle": "bun build src/cli.ts --compile --outfile dist/pilla",
     "dev": "bun src/cli.ts",
     "lint": "eslint ."
   },
