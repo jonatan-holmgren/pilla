@@ -30,7 +30,7 @@ export const runShell = (cwd: string, appName: string) => {
   spawnSync(shell, [], {
     cwd,
     stdio: "inherit",
-    env: { ...childEnv, PS1: `(pilla:${appName}) \\w $ ` },
+    env: { ...childEnv, PS1: `(pillra:${appName}) \\w $ ` },
   });
 };
 

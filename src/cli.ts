@@ -4,12 +4,12 @@ import { edit } from "./edit.js";
 import { setup } from "./setup.js";
 
 const USAGE = `
-pilla - maintain patches on top of pinned upstream git repos
+pillra - maintain patches on top of pinned upstream git repos
 
 Usage:
-  pilla setup [app]   Clone and apply patches (all apps, or one by name)
-  pilla edit <app>    Open an interactive edit session to update patches
-  pilla bump <app>    Advance pinned commit to latest upstream and re-apply patches
+  pillra setup [app]   Clone and apply patches (all apps, or one by name)
+  pillra edit <app>    Open an interactive edit session to update patches
+  pillra bump <app>    Advance pinned commit to latest upstream and re-apply patches
 
 Each app is a directory containing an app.json:
   {
@@ -35,7 +35,7 @@ try {
       const app = args[0];
 
       if (!app) {
-        console.error("Usage: pilla edit <app>");
+        console.error("Usage: pillra edit <app>");
         process.exit(1);
       }
 
@@ -46,7 +46,7 @@ try {
       const app = args[0];
 
       if (!app) {
-        console.error("Usage: pilla bump <app>");
+        console.error("Usage: pillra bump <app>");
         process.exit(1);
       }
 

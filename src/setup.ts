@@ -16,7 +16,7 @@ const scaffold = (dir: string, name: string) => {
 
   writeFileSync(configPath, JSON.stringify(APP_JSON_TEMPLATE, undefined, 2) + "\n");
   console.log(`Created ${configPath}`);
-  console.log(`\nFill in the repo URL and commit SHA, then run: pilla setup ${name}`);
+  console.log(`\nFill in the repo URL and commit SHA, then run: pillra setup ${name}`);
 };
 
 export const setup = (root: string, target?: string) => {

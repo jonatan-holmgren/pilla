@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pilla",
+      "name": "pillra",
       "devDependencies": {
         "@types/bun": "latest",
         "eslint": "^9.0.0",
