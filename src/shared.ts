@@ -1,81 +1,73 @@
-import { execSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-// eslint-disable-next-line unicorn/import-style
-import * as path from "node:path";
+import { execFileSync, execSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
-export type AppConfig = {
+export type UpstreamConfig = {
   repo: string;
   commit: string;
   branch?: string;
-  setup?: string;
-  patches?: string;
 };
 
-export type App = {
-  name: string;
-  dir: string;
-  config: AppConfig;
-  patchesDir: string;
+const childEnv = { ...process.env, COREPACK_ENABLE_STRICT: "0" };
+
+export const run = (args: string[], cwd: string) => {
+  execFileSync(args[0], args.slice(1), { cwd, stdio: "inherit", env: childEnv });
 };
 
-export const childEnv = { ...process.env, COREPACK_ENABLE_STRICT: "0" };
+export const runCapture = (args: string[], cwd: string): string =>
+  execFileSync(args[0], args.slice(1), { cwd, encoding: "utf8", env: childEnv }).trim();
 
-export const promptYesNo = (question: string): boolean => {
-  process.stdout.write(`${question} [y/N] `);
-  const answer = execSync("head -1 /dev/tty", { encoding: "utf8" }).trim()
-    .toLowerCase();
+const parseArg = (content: string, name: string): string | undefined =>
+  content.match(new RegExp(`^ARG ${name}=(.+)$`, "m"))?.[1]?.trim();
 
-  return answer === "y" || answer === "yes";
+export const readDockerfileConfig = (dir: string): UpstreamConfig => {
+  const dockerfilePath = path.join(dir, "Dockerfile");
+
+  if (!existsSync(dockerfilePath)) throw new Error(`No Dockerfile found in: ${dir}`);
+
+  const content = readFileSync(dockerfilePath, "utf8");
+  const repo = parseArg(content, "UPSTREAM_REPO");
+  const commit = parseArg(content, "UPSTREAM_COMMIT");
+  const branch = parseArg(content, "UPSTREAM_BRANCH");
+
+  if (!repo) throw new Error("UPSTREAM_REPO ARG not found in Dockerfile");
+
+  if (!commit) throw new Error("UPSTREAM_COMMIT ARG not found in Dockerfile");
+
+  return { repo, commit, branch };
 };
 
-export const maybeRunSetup = (setupCmd: string, appDir: string, cloneDir: string) => {
-  if (promptYesNo(`  Run setup command? "${setupCmd}"`)) {
-    const resolvedCmd = setupCmd.startsWith(".")
-      ? path.resolve(appDir, setupCmd)
-      : setupCmd;
+export const writeDockerfileCommit = (dir: string, newCommit: string) => {
+  const dockerfilePath = path.join(dir, "Dockerfile");
+  const content = readFileSync(dockerfilePath, "utf8");
 
-    run(resolvedCmd, cloneDir);
-  }
+  writeFileSync(dockerfilePath, content.replace(/^ARG UPSTREAM_COMMIT=.+$/m, `ARG UPSTREAM_COMMIT=${newCommit}`));
 };
 
-export const run = (cmd: string, cwd: string) => {
-  execSync(cmd, { cwd, stdio: "inherit", env: childEnv });
+export const promptInput = (question: string, defaultValue?: string): string => {
+  process.stdout.write(defaultValue ? `${question} [${defaultValue}]: ` : `${question}: `);
+  const answer = execSync("head -1 /dev/tty", { encoding: "utf8" }).trim();
+
+  return answer || defaultValue || "";
 };
 
-export const loadApp = (appDir: string): App | undefined => {
-  const configPath = path.join(appDir, "app.json");
+export const resolveLatestCommit = (repo: string, branch: string): string => {
+  const result = runCapture(["git", "ls-remote", repo, `refs/heads/${branch}`], process.cwd());
+  const commit = result.split("\t")[0]?.trim();
 
-  if (!existsSync(configPath)) return;
+  if (!commit) throw new Error(`Could not resolve ${branch} on ${repo}`);
 
-  const config: AppConfig = JSON.parse(readFileSync(configPath, "utf8"));
-  const name = path.basename(appDir);
-  const patchesDir = path.join(appDir, config.patches ?? "patches");
-
-  return { name, dir: appDir, config, patchesDir };
+  return commit;
 };
-
-export const discoverApps = (root: string): App[] => readdirSync(root, { withFileTypes: true })
-  .filter(d => d.isDirectory() && d.name !== "node_modules")
-  .map(d => loadApp(path.join(root, d.name)))
-  .filter((a): a is App => a !== undefined);
 
 export const listPatches = (patchesDir: string): string[] => {
   if (!existsSync(patchesDir)) return [];
 
-  return readdirSync(patchesDir)
-    .filter(f => f.endsWith(".patch"))
+  return readdirSync(patchesDir).filter(f => f.endsWith(".patch"))
     .sort();
 };
 
 export const applyPatches = (patches: string[], patchesDir: string, targetDir: string, asCommits = false) => {
-  if (patches.length === 0) return;
-
-  console.log(`  Applying ${patches.length} patch(es)${asCommits ? " as commits" : ""}…`);
-
-  for (const patch of patches) {
-    console.log(`    ${patch}`);
-    const patchPath = path.join(patchesDir, patch);
-
-    run(asCommits ? `git am ${patchPath}` : `git apply ${patchPath}`, targetDir);
-  }
+  for (const patch of patches)
+    run(asCommits ? ["git", "am", path.join(patchesDir, patch)] : ["git", "apply", path.join(patchesDir, patch)], targetDir);
 };

@@ -1,107 +1,44 @@
-import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-// eslint-disable-next-line unicorn/import-style
-import * as path from "node:path";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
-import { listPatches, loadApp, run } from "./shared.js";
+import { listPatches, readDockerfileConfig, resolveLatestCommit, run, writeDockerfileCommit } from "./shared.js";
 
-const resolveLatestCommit = (repo: string, branch: string): string => {
-  const result = execSync(`git ls-remote ${repo} refs/heads/${branch}`, { encoding: "utf8" });
-  const commit = result.split("\t")[0]?.trim();
+export const bump = (dir: string) => {
+  const config = readDockerfileConfig(dir);
 
-  if (!commit) throw new Error(`Could not resolve ${branch} on ${repo}`);
+  if (!config.branch) throw new Error("UPSTREAM_BRANCH not set in Dockerfile");
 
-  return commit;
-};
+  const latest = resolveLatestCommit(config.repo, config.branch);
 
-export const bump = (root: string, target: string) => {
-  const appDir = path.resolve(root, target);
-  const app = loadApp(appDir);
-
-  if (!app) throw new Error(`No app.json found in: ${appDir}`);
-
-  const branch = app.config.branch;
-
-  if (!branch) {
-    throw new Error(`No "branch" field in app.json for ${app.name}. Add one to enable bumping.`);
-  }
-
-  const cloneDir = path.join(app.dir, "app");
-
-  if (!existsSync(cloneDir)) {
-    throw new Error(`No local clone found. Run 'pillra clone ${target}' first.`);
-  }
-
-  console.log(`\nResolving latest commit on ${branch}…`);
-  const latestCommit = resolveLatestCommit(app.config.repo, branch);
-
-  if (latestCommit === app.config.commit) {
-    console.log(`Already at latest (${latestCommit.slice(0, 8)}).`);
+  if (latest === config.commit) {
+    console.log(`already at ${latest.slice(0, 8)}`);
 
     return;
   }
 
-  console.log(`  ${app.config.commit.slice(0, 8)} → ${latestCommit.slice(0, 8)}`);
+  console.log(`${config.commit.slice(0, 8)} → ${latest.slice(0, 8)}`);
 
-  const editDir = path.join(app.dir, "app-edit");
+  const editDir = path.join(dir, ".edit");
 
-  if (existsSync(editDir)) {
-    console.log("Cleaning up previous edit session…");
-    run(`git worktree remove --force ${editDir}`, cloneDir);
-  }
+  if (existsSync(editDir)) throw new Error(".edit already exists. Finalize with 'pillra save' or delete it manually.");
 
-  console.log("\nFetching new commits…");
-  run(`git fetch origin ${branch}`, cloneDir);
-  run(`git worktree add --detach ${editDir} ${latestCommit}`, cloneDir);
+  writeDockerfileCommit(dir, latest);
 
-  // Update app.json now so 'pillra save' knows the new base commit
-  const configPath = path.join(app.dir, "app.json");
-  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  run(["git", "clone", "--filter=blob:none", "--no-checkout", config.repo, ".edit"], dir);
+  run(["git", "checkout", latest], editDir);
 
-  config.commit = latestCommit;
-  writeFileSync(configPath, JSON.stringify(config, undefined, 4) + "\n");
-  console.log(`  Updated app.json commit → ${latestCommit.slice(0, 8)}`);
+  const patchesDir = path.join(dir, "patches");
 
-  const patches = listPatches(app.patchesDir);
-  let conflicted = false;
+  for (const patch of listPatches(patchesDir)) {
+    try {
+      run(["git", "am", path.join(patchesDir, patch)], editDir);
+    }
+    catch {
+      console.error(`conflict: ${patch}\nresolve, run 'git am --continue', then 'pillra save'`);
 
-  if (patches.length > 0) {
-    console.log(`\nApplying ${patches.length} patch(es) as commits…`);
-
-    for (const patch of patches) {
-      console.log(`  ${patch}`);
-      const patchPath = path.join(app.patchesDir, patch);
-
-      try {
-        run(`git am ${patchPath}`, editDir);
-      }
-      catch {
-        console.log(`\n  Conflict applying ${patch}.`);
-        conflicted = true;
-        break;
-      }
+      return;
     }
   }
 
-  if (conflicted) {
-    console.log(`
-  Conflict during bump: ${app.name}
-  Directory: ${editDir}
-
-  Resolve conflicts, then run "git am --continue".
-  Remaining patches will need to be re-applied manually.
-
-  When done: pillra save ${target}
-`);
-  }
-  else {
-    console.log(`
-  Bump ready: ${app.name}
-  Directory: ${editDir}
-
-  Patches applied cleanly. Review or adjust commits.
-
-  When done: pillra save ${target}
-`);
-  }
+  console.log(`ready: ${editDir}`);
 };

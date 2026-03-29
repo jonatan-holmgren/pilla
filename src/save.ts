@@ -1,55 +1,35 @@
-import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-// eslint-disable-next-line unicorn/import-style
-import * as path from "node:path";
+import path from "node:path";
 
-import { loadApp, maybeRunSetup, run } from "./shared.js";
+import { readDockerfileConfig, runCapture } from "./shared.js";
 
-export const save = (root: string, target: string) => {
-  const appDir = path.resolve(root, target);
-  const app = loadApp(appDir);
+export const save = (dir: string) => {
+  const config = readDockerfileConfig(dir);
+  const editDir = path.join(dir, ".edit");
+  const patchesDir = path.join(dir, "patches");
 
-  if (!app) throw new Error(`No app.json found in: ${appDir}`);
+  if (!existsSync(editDir)) throw new Error("no .edit session found, run 'pillra edit' first");
 
-  const cloneDir = path.join(app.dir, "app");
-  const editDir = path.join(app.dir, "app-edit");
+  const dirty = runCapture(["git", "status", "--porcelain"], editDir);
 
-  if (!existsSync(editDir)) {
-    throw new Error(`No edit session found. Run 'pillra edit ${target}' first.`);
-  }
+  if (dirty) throw new Error(`.edit has uncommitted changes:\n\n${dirty}`);
 
-  console.log("Regenerating patches…");
+  mkdirSync(patchesDir, { recursive: true });
 
-  mkdirSync(app.patchesDir, { recursive: true });
-
-  // Run format-patch first. If it fails, existing patches are preserved
-  const result = execSync(
-    `git format-patch ${app.config.commit} --output-directory ${app.patchesDir} --zero-commit --no-signature`,
-    { cwd: editDir, encoding: "utf8" },
-  ).trim();
+  const result = runCapture(
+    ["git", "format-patch", config.commit, "--output-directory", patchesDir, "--zero-commit", "--no-signature"],
+    editDir,
+  );
 
   const generated = result ? result.split("\n").map(p => path.basename(p)) : [];
-
-  // Remove stale patches that weren't regenerated
   const generatedSet = new Set(generated);
 
-  readdirSync(app.patchesDir)
+  readdirSync(patchesDir)
     .filter(f => f.endsWith(".patch") && !generatedSet.has(f))
-    .forEach(f => rmSync(path.join(app.patchesDir, f)));
+    .forEach(f => rmSync(path.join(patchesDir, f)));
 
-  if (generated.length === 0) {
-    console.log("No commits above pinned commit — patches cleared.");
-  }
-  else {
-    console.log(`Generated ${generated.length} patch(es):`);
-    generated.forEach(p => console.log(`  ${p}`));
-  }
+  rmSync(editDir, { recursive: true, force: true });
 
-  run(`git worktree remove --force ${editDir}`, cloneDir);
-
-  if (app.config.setup) {
-    maybeRunSetup(app.config.setup, app.dir);
-  }
-
-  console.log("\nDone. Review patches, then commit them.");
+  if (generated.length === 0) console.log("no patches");
+  else generated.forEach(p => console.log(p));
 };
