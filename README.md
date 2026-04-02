@@ -1,20 +1,9 @@
-# pillra
+<p align="center">
+  <h1>pillra</h1>
+  <p>Pin upstream commits, manage patches, and keep your Nix devShell in sync.</p>
+</p>
 
-Maintain a set of patches on top of pinned upstream git repositories. Each app lives in its own directory with an `app.json` that declares which repo and commit to pin, plus a `patches/` directory of `.patch` files to apply on top.
-
-## Concept
-
-Instead of forking a repo, you pin an upstream commit and store your changes as patch files alongside the config. This makes your modifications explicit, reviewable, and easy to rebase when the upstream moves.
-
-```
-my-project/
-  open-lavatory/
-    app.json        ← pin config
-    patches/
-      0001-fix-login.patch
-      0002-add-dark-mode.patch
-    .app/           ← cloned + patched repo (gitignored)
-```
+Pin an upstream commit, store your changes as `.patch` files, and let your Nix devShell handle the rest. No forks, no diverging branches. Just explicit, reviewable diffs on top of a locked upstream.
 
 ## Install
 
@@ -24,110 +13,94 @@ pnpm install -g pillra
 bun add -g pillra
 ```
 
-## Usage
+## Concept
 
-### `pillra init <app>`
+Each example lives in its own directory with a `flake.nix` that declares the upstream repo, commit, and branch, plus a `patches/` directory. The flake's `shellHook` clones the repo and applies patches when you enter the dev environment. Pillra's job is solely to help you author and update those patch files.
 
-Scaffold a new app directory with a template `app.json`.
-
-```sh
-pillra init open-lavatory
+```
+my-project/
+  some-app/
+    flake.nix       ← upstream config + dev environment
+    patches/
+      0001-add-feature.patch
+    .edit/          ← ephemeral edit session (gitignored)
 ```
 
-Fill in the `repo` and `commit` fields, then run `pillra clone`.
+## flake.nix convention
 
-### `pillra clone [app]`
+Pillra reads and updates three variables in your `flake.nix`:
 
-Clone the upstream repo and apply patches into `.app/`. Run without an argument to clone all apps in the current directory.
-
-```sh
-pillra clone               # all apps
-pillra clone open-lavatory
+```nix
+upstreamRepo   = "https://github.com/org/repo";
+upstreamCommit = "abc123...";
+upstreamBranch = "main";          # optional, required for bump
 ```
 
-Only needs to run once. `.app/` is the live patched copy you work against.
+## Commands
 
-### `pillra apply [app]`
+All commands run in the current directory (the example directory).
 
-Re-apply patches to an existing `.app/` — no network needed. Use this after pulling updated patches from a teammate.
+### `pillra new <dir>`
 
-```sh
-pillra apply               # all apps
-pillra apply open-lavatory
-```
-
-Resets `.app/` to the pinned commit and re-applies all patch files.
-
-### `pillra edit <app>`
-
-Prepare an edit session for modifying patches.
+Scaffold a new example directory. Prompts for repo URL and branch, resolves the latest commit automatically.
 
 ```sh
-pillra edit open-lavatory
+pillra new some-app
 ```
 
-Creates `.app-edit/` as a git worktree from the local `.app/` (no network), applies existing patches as commits, then prints the directory path. Make changes and commit them in `.app-edit/` using your normal tools — each commit becomes one patch file. When done, run `pillra save`.
+Creates `<dir>/flake.nix` and `<dir>/patches/`.
 
-### `pillra save <app>`
+### `pillra edit`
 
-Finalize the edit session: regenerate patch files from commits in `.app-edit/`, then clean up.
+Clone upstream into `.edit/` with existing patches applied as commits, ready to modify.
 
 ```sh
-pillra save open-lavatory
+cd some-app
+pillra edit
 ```
 
-If a `setup` command is configured, you'll be asked whether to run it against `.app/`.
+Make changes and `git commit` in `.edit/`. Each commit becomes one patch file. Run `pillra save` when done.
 
-### `pillra bump <app>`
+### `pillra save`
+
+Regenerate patch files from commits in `.edit/` and clean up.
+
+```sh
+pillra save
+```
+
+Fails if `.edit/` has uncommitted changes.
+
+### `pillra bump`
 
 Advance the pinned commit to the latest upstream and re-apply patches.
 
 ```sh
-pillra bump open-lavatory
+pillra bump
 ```
 
-Fetches new commits into `.app/`, updates `commit` in `app.json`, then sets up `.app-edit/` with your patches applied on top of the new base. If patches apply cleanly, review and adjust commits as needed. If there are conflicts, resolve them (`git am --continue`) and finish remaining patches manually. Then run `pillra save`.
-
-## app.json
-
-```json
-{
-  "repo": "https://github.com/org/repo",
-  "commit": "abc123...",
-  "branch": "main",
-  "setup": "yarn install",
-  "patches": "patches"
-}
-```
-
-| Field     | Required                | Description                                          |
-|-----------|-------------------------|------------------------------------------------------|
-| `repo`    | yes                     | Git remote URL                                       |
-| `commit`  | yes                     | Full commit SHA to pin                               |
-| `branch`  | for `bump`              | Branch to resolve latest commit from                 |
-| `setup`   | no                      | Command to run after cloning (you'll be prompted)    |
-| `patches` | no (default: `patches`) | Directory containing `.patch` files                  |
+Updates `upstreamCommit` in `flake.nix`, clones the new base into `.edit/`, and applies patches. On conflict, resolve with `git am --continue` then run `pillra save`.
 
 ## Workflow
 
 ```sh
 # First time
-pillra init myapp        # scaffold app.json
-# edit myapp/app.json
-pillra clone myapp       # clone upstream → .app/
+pillra new myapp         # creates myapp/ with flake.nix and patches/
+cd myapp
+# edit flake.nix to add packages and run commands
 
-# Editing patches
-pillra edit myapp        # sets up .app-edit/
-# make commits in .app-edit/
-pillra save myapp        # regenerate patches, clean up
-
-# After a teammate updates patches
-pillra apply myapp       # re-apply to .app/ instantly
+# Authoring patches
+pillra edit              # clones upstream into .edit/ with patches as commits
+# make changes and git commit in .edit/
+pillra save              # regenerate patch files, clean up .edit/
 
 # Tracking a new upstream commit
-pillra bump myapp        # fetch + set up .app-edit/ at new commit
-# resolve conflicts if any
-pillra save myapp        # regenerate patches, update app.json
+pillra bump              # fetches latest, sets up .edit/ at new base
+# resolve conflicts if any, then:
+pillra save
+
+# Entering the dev environment
+nix develop              # shellHook clones, patches, and installs
 ```
 
-Commit `app.json` and `patches/` to your repo. Ignore `.app/` and `.app-edit/`.
+Commit `flake.nix` and `patches/`. Add `.edit/` to `.gitignore`.

@@ -7,7 +7,7 @@ import { save } from "./save.js";
 const USAGE = `
 pillra - patch management for pinned upstream repos
 
-  pillra new <dir>   scaffold a new example with a Dockerfile
+  pillra new <dir>   scaffold a new example with a flake.nix
   pillra edit        clone upstream into .edit/ with patches applied as commits
   pillra save        regenerate patch files from .edit/ and clean up
   pillra bump        advance pinned commit to latest upstream, re-apply patches

@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
-import { readDockerfileConfig, runCapture } from "./shared.js";
+import { readFlakeConfig, runCapture } from "./shared.js";
 
 export const save = (dir: string) => {
-  const config = readDockerfileConfig(dir);
+  const config = readFlakeConfig(dir);
   const editDir = path.join(dir, ".edit");
   const patchesDir = path.join(dir, "patches");
 

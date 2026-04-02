@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { listPatches, readDockerfileConfig, resolveLatestCommit, run, writeDockerfileCommit } from "./shared.js";
+import { listPatches, readFlakeConfig, resolveLatestCommit, run, writeFlakeCommit } from "./shared.js";
 
 export const bump = (dir: string) => {
-  const config = readDockerfileConfig(dir);
+  const config = readFlakeConfig(dir);
 
-  if (!config.branch) throw new Error("UPSTREAM_BRANCH not set in Dockerfile");
+  if (!config.branch) throw new Error("upstreamBranch not set in flake.nix");
 
   const latest = resolveLatestCommit(config.repo, config.branch);
 
@@ -22,7 +22,7 @@ export const bump = (dir: string) => {
 
   if (existsSync(editDir)) throw new Error(".edit already exists. Finalize with 'pillra save' or delete it manually.");
 
-  writeDockerfileCommit(dir, latest);
+  writeFlakeCommit(dir, latest);
 
   run(["git", "clone", "--filter=blob:none", "--no-checkout", config.repo, ".edit"], dir);
   run(["git", "checkout", latest], editDir);

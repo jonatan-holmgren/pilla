@@ -1,6 +1,6 @@
 {
   "name": "pillra",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Maintain patches on top of pinned upstream git repos",
   "type": "module",
   "license": "MIT",

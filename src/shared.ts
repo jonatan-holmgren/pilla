@@ -17,31 +17,30 @@ export const run = (args: string[], cwd: string) => {
 export const runCapture = (args: string[], cwd: string): string =>
   execFileSync(args[0], args.slice(1), { cwd, encoding: "utf8", env: childEnv }).trim();
 
-const parseArg = (content: string, name: string): string | undefined =>
-  content.match(new RegExp(`^ARG ${name}=(.+)$`, "m"))?.[1]?.trim();
+const parseFlakeVar = (content: string, name: string): string | undefined =>
+  content.match(new RegExp(`${name}\\s*=\\s*"(.+)";`))?.[1]?.trim();
 
-export const readDockerfileConfig = (dir: string): UpstreamConfig => {
-  const dockerfilePath = path.join(dir, "Dockerfile");
+export const readFlakeConfig = (dir: string): UpstreamConfig => {
+  const flakePath = path.join(dir, "flake.nix");
 
-  if (!existsSync(dockerfilePath)) throw new Error(`No Dockerfile found in: ${dir}`);
+  if (!existsSync(flakePath)) throw new Error(`No flake.nix found in: ${dir}`);
 
-  const content = readFileSync(dockerfilePath, "utf8");
-  const repo = parseArg(content, "UPSTREAM_REPO");
-  const commit = parseArg(content, "UPSTREAM_COMMIT");
-  const branch = parseArg(content, "UPSTREAM_BRANCH");
+  const content = readFileSync(flakePath, "utf8");
+  const repo = parseFlakeVar(content, "upstreamRepo");
+  const commit = parseFlakeVar(content, "upstreamCommit");
+  const branch = parseFlakeVar(content, "upstreamBranch");
 
-  if (!repo) throw new Error("UPSTREAM_REPO ARG not found in Dockerfile");
-
-  if (!commit) throw new Error("UPSTREAM_COMMIT ARG not found in Dockerfile");
+  if (!repo) throw new Error("upstreamRepo not found in flake.nix");
+  if (!commit) throw new Error("upstreamCommit not found in flake.nix");
 
   return { repo, commit, branch };
 };
 
-export const writeDockerfileCommit = (dir: string, newCommit: string) => {
-  const dockerfilePath = path.join(dir, "Dockerfile");
-  const content = readFileSync(dockerfilePath, "utf8");
+export const writeFlakeCommit = (dir: string, newCommit: string) => {
+  const flakePath = path.join(dir, "flake.nix");
+  const content = readFileSync(flakePath, "utf8");
 
-  writeFileSync(dockerfilePath, content.replace(/^ARG UPSTREAM_COMMIT=.+$/m, `ARG UPSTREAM_COMMIT=${newCommit}`));
+  writeFileSync(flakePath, content.replace(/upstreamCommit\s*=\s*".+";/, `upstreamCommit = "${newCommit}";`));
 };
 
 export const promptInput = (question: string, defaultValue?: string): string => {
@@ -63,8 +62,7 @@ export const resolveLatestCommit = (repo: string, branch: string): string => {
 export const listPatches = (patchesDir: string): string[] => {
   if (!existsSync(patchesDir)) return [];
 
-  return readdirSync(patchesDir).filter(f => f.endsWith(".patch"))
-    .sort();
+  return readdirSync(patchesDir).filter(f => f.endsWith(".patch")).sort();
 };
 
 export const applyPatches = (patches: string[], patchesDir: string, targetDir: string, asCommits = false) => {

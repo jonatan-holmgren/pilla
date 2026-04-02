@@ -3,30 +3,42 @@ import path from "node:path";
 
 import { promptInput, resolveLatestCommit } from "./shared.js";
 
-const dockerfile = (repo: string, commit: string, branch: string) => `\
-FROM node:20-alpine
+const flake = (repo: string, commit: string, branch: string) => `\
+{
+  description = "patched upstream";
 
-ARG UPSTREAM_REPO=${repo}
-ARG UPSTREAM_COMMIT=${commit}
-ARG UPSTREAM_BRANCH=${branch}
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-RUN apk add --no-cache git
+  outputs = { self, nixpkgs }: let
+    upstreamRepo = "${repo}";
+    upstreamCommit = "${commit}";
+    upstreamBranch = "${branch}";
 
-RUN git clone $UPSTREAM_REPO /app
-RUN git -C /app checkout $UPSTREAM_COMMIT
-
-WORKDIR /app
-COPY patches/ /patches/
-RUN find /patches -name "*.patch" | sort | xargs -r git apply
-
-# RUN npm install
-# CMD ["npm", "start"]
+    systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+    forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.\${system});
+  in {
+    devShells = forEachSystem (pkgs: {
+      default = pkgs.mkShell {
+        packages = [ pkgs.git pkgs.nodejs_20 ];
+        shellHook = ''
+          if [ ! -d .repo ]; then
+            git clone \${upstreamRepo} .repo
+            git -C .repo checkout \${upstreamCommit}
+            for patch in $(find patches -name "*.patch" | sort); do
+              git -C .repo apply "$patch"
+            done
+          fi
+        '';
+      };
+    });
+  };
+}
 `;
 
 export const create = (root: string, name: string) => {
   const dir = path.resolve(root, name);
 
-  if (existsSync(path.join(dir, "Dockerfile"))) throw new Error(`Dockerfile already exists in ${dir}`);
+  if (existsSync(path.join(dir, "flake.nix"))) throw new Error(`flake.nix already exists in ${dir}`);
 
   const repo = promptInput("repo");
 
@@ -36,7 +48,7 @@ export const create = (root: string, name: string) => {
   const commit = resolveLatestCommit(repo, branch);
 
   mkdirSync(path.join(dir, "patches"), { recursive: true });
-  writeFileSync(path.join(dir, "Dockerfile"), dockerfile(repo, commit, branch));
+  writeFileSync(path.join(dir, "flake.nix"), flake(repo, commit, branch));
 
   console.log(`created ${dir} @ ${commit.slice(0, 8)}`);
 };
