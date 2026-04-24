@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { listPatches, readFlakeConfig, resolveLatestCommit, run, writeFlakeCommit } from "./shared.js";
+import { checkoutPinnedRepo, listPatches, readFlakeConfig, resolveLatestCommit, run, writeFlakeCommit } from "./shared.js";
 
 export const bump = (dir: string) => {
   const config = readFlakeConfig(dir);
@@ -24,8 +24,7 @@ export const bump = (dir: string) => {
 
   writeFlakeCommit(dir, latest);
 
-  run(["git", "clone", "--filter=blob:none", "--no-checkout", config.repo, ".edit"], dir);
-  run(["git", "checkout", latest], editDir);
+  checkoutPinnedRepo({ ...config, commit: latest }, dir, ".edit");
 
   const patchesDir = path.join(dir, "patches");
 

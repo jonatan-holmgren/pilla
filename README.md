@@ -15,7 +15,7 @@ bun add -g pillra
 
 ## Concept
 
-Each example lives in its own directory with a `flake.nix` that declares the upstream repo, commit, and branch, plus a `patches/` directory. The flake's `shellHook` clones the repo and applies patches when you enter the dev environment. Pillra's job is solely to help you author and update those patch files.
+Each example lives in its own directory with a `flake.nix` that declares the upstream repo, commit, and branch, plus a `patches/` directory. Pillra owns upstream checkout materialization for both `.edit/` and `.repo/`, using a shared cached upstream checkout and detached worktrees, while the flake provides the toolchain and any example-specific bootstrap logic.
 
 ```
 my-project/
@@ -49,6 +49,24 @@ pillra new some-app
 ```
 
 Creates `<dir>/flake.nix` and `<dir>/patches/`.
+
+### `pillra clone [target]`
+
+Clone upstream into `.repo/` at the pinned commit without applying patches.
+
+```sh
+cd some-app
+pillra clone
+```
+
+### `pillra materialize [target]`
+
+Clone upstream into `.repo/` with patches applied as commits, ready to run.
+
+```sh
+cd some-app
+pillra materialize
+```
 
 ### `pillra edit`
 
@@ -100,7 +118,7 @@ pillra bump              # fetches latest, sets up .edit/ at new base
 pillra save
 
 # Entering the dev environment
-nix develop              # shellHook clones, patches, and installs
+nix develop              # shellHook can call `pillra materialize` and bootstrap
 ```
 
 Commit `flake.nix` and `patches/`. Add `.edit/` to `.gitignore`.

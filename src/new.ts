@@ -22,10 +22,10 @@ const flake = (repo: string, commit: string, branch: string) => `\
         packages = [ pkgs.git pkgs.nodejs_20 ];
         shellHook = ''
           if [ ! -d .repo ]; then
-            git clone \${upstreamRepo} .repo
+            git clone --filter=blob:none --no-checkout --no-tags --single-branch --branch \${upstreamBranch} \${upstreamRepo} .repo
             git -C .repo checkout \${upstreamCommit}
             for patch in $(find patches -name "*.patch" | sort); do
-              git -C .repo apply "$patch"
+              git -C .repo apply "../$patch"
             done
           fi
         '';
@@ -35,16 +35,16 @@ const flake = (repo: string, commit: string, branch: string) => `\
 }
 `;
 
-export const create = (root: string, name: string) => {
+export const create = async (root: string, name: string) => {
   const dir = path.resolve(root, name);
 
   if (existsSync(path.join(dir, "flake.nix"))) throw new Error(`flake.nix already exists in ${dir}`);
 
-  const repo = promptInput("repo");
+  const repo = await promptInput("repo");
 
   if (!repo) throw new Error("repo is required");
 
-  const branch = promptInput("branch", "main");
+  const branch = await promptInput("branch", "main");
   const commit = resolveLatestCommit(repo, branch);
 
   mkdirSync(path.join(dir, "patches"), { recursive: true });
